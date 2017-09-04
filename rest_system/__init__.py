@@ -1,1 +1,1 @@
-from rest_system.endpoints import model, service
+from rest_system.endpoints import Model, Service

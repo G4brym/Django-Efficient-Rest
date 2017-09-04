@@ -1,21 +1,16 @@
-from django.template import RequestContext, Context, Template, loader
-from django.http import JsonResponse, HttpResponseRedirect
+from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.shortcuts import render, redirect, render_to_response
-from django.conf import settings
 
-import json
-import re
-import os
+from rest_system.manager import Manager
 
-from rest_system.manager import manager
 
+@csrf_exempt
 def index_req(request):
     return JsonResponse({"error": "not found"}, status=404)
 
 @csrf_exempt
 def api_req(request, endpoint, action=""):
-    result = manager(request, str(endpoint), str(action))
+    result = Manager(request, str(endpoint), str(action))
 
     return JsonResponse(result.getResult(), status=result.getCode())
 
