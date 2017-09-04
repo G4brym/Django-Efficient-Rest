@@ -1,11 +1,11 @@
 import json
-
 import math
+
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django import forms
 
-from rest_system.forms import modelField
+from EfficientRest.forms import modelField
 
 
 class EndpointType():

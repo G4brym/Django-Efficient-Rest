@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from rest_system.manager import Manager
+from EfficientRest.manager import Manager
 
 
 @csrf_exempt

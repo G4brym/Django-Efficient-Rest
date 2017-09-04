@@ -43,7 +43,7 @@ class UserAuthKeys(models.Model):
         }
 
     class Meta:
-        app_label = 'rest_system'
+        app_label = 'EfficientRest'
 
 
 class UserAuthFails(models.Model):
@@ -61,4 +61,4 @@ class UserAuthFails(models.Model):
         }
 
     class Meta:
-        app_label = 'rest_system'
+        app_label = 'EfficientRest'

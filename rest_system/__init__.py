@@ -1,1 +1,0 @@
-from rest_system.endpoints import Model, Service

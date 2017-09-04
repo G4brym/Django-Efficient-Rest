@@ -1,0 +1,1 @@
+from EfficientRest.endpoints import Model, Service

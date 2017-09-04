@@ -1,6 +1,5 @@
 import uuid
 import datetime as dt
-from django.utils.dateparse import parse_datetime
 
 def get_new_token():
     return str(str(uuid.uuid4()) + str(uuid.uuid4())).replace("-", "")[:64]

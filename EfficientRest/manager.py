@@ -4,7 +4,7 @@ import json
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 
-from rest_system.models import UserAuthKeys
+from EfficientRest.models import UserAuthKeys
 
 # Imports the endpoint folders
 api_endpoints = importlib.import_module(settings.REST_ENDPOINTS)
