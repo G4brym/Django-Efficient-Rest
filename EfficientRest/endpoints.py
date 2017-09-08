@@ -22,6 +22,8 @@ class EndpointType():
     Result = {}
     Errors = []
 
+    useSafe = True
+
     def __init__(self, request, action):
         self.Code = 500
         self.Result = {}
@@ -40,6 +42,12 @@ class EndpointType():
             return self.Meta.special_response
         except:
             return False
+
+    def getSafe(self):
+        return self.useSafe
+
+    def setSafe(self, value):
+        self.useSafe = value
 
     def requires_action(self):
         return self.Meta.requires_action
@@ -162,7 +170,7 @@ class BaseModel(Model):
     def __init__(self, request, action):
         Model.__init__(self, request, action)
         self.Form = type('APIForm',  # form name is irrelevant
-                (forms.BaseForm,),
+                (forms.BaseForm,), # Dont remove the first comma in this line, really important
                 {'base_fields': self.Meta.FormFields})
 
     def get_process(self):
@@ -170,20 +178,82 @@ class BaseModel(Model):
         # Retrieves the number of pages for this model
         #####
 
-        objectList = self.Meta.Model.objects.all().count()
-        print(objectList)
+        page = self.request.GET.get('page', None)
+        if page != None:
+            try:
+                clean_id = int(page)
+            except:
+                return 400
 
-        pages = math.ceil(objectList / settings.OBJECTS_PER_REQUEST)
-        print(pages)
+            skip = (clean_id - 1) * settings.EFFICIENTREST["OBJECTS_PER_REQUEST"]
+            get = skip + settings.EFFICIENTREST["OBJECTS_PER_REQUEST"]
+
+            totalObjs = self.Meta.Model.objects.all().count()
+
+            if skip > totalObjs or clean_id == 0:
+                return 406
+
+            try:
+                objectList = self.Meta.Model.objects.all()[skip:get]
+            except ObjectDoesNotExist:
+                return 404
+
+            tmp = []
+            for object in objectList:
+                tmp.append(object.get_as_dict())
+
+            if totalObjs <= get:
+                next = False
+            else:
+                next = True
+
+            if clean_id < 2:
+                previous = False
+            else:
+                previous = True
+
+
+            self.setResult({"results": tmp, "meta":{"count": totalObjs, "next": next, "previous": previous}})
+            return 200
+
+
+        # Process Coalescing
+        ids = self.request.GET.getlist('ids[]', None)
+        if ids != None:
+            clean_ids = []
+            final_dict = []
+
+            for id in ids:
+                try:
+                    clean_ids.append(int(id))
+                except:
+                    return 400
+
+            objectList = self.Meta.Model.objects.filter(id__in=clean_ids)
+
+            for object in objectList:
+                final_dict.append(object.get_as_dict())
+
+            self.setResult(final_dict)
+
+            # Disable Django safe mode, so it can actualy return a List
+            self.setSafe(False)
+            return 200
+
+
+
+        objectList = self.Meta.Model.objects.all().count()
+
+        pages = math.ceil(objectList / settings.EFFICIENTREST["OBJECTS_PER_REQUEST"])
         if pages > 0:
             pages = pages-1
 
-        self.setResult({"pages": pages})
+        self.setResult({"pages": pages, "count": objectList})
         return 200
 
     def get_process_single(self, id):
         #####
-        # Retrieves a single page
+        # Retrieves a single object
         #####
 
         try:
@@ -191,22 +261,12 @@ class BaseModel(Model):
         except:
             return 400
 
-        skip = (clean_id -1) * settings.OBJECTS_PER_REQUEST
-        get = skip + settings.OBJECTS_PER_REQUEST
-
-        if skip > self.Meta.Model.objects.all().count() or clean_id == 0:
-            return 406
-
         try:
-            objectList = self.Meta.Model.objects.all()[skip:get]
+            object = self.Meta.Model.objects.get(id=clean_id)
         except ObjectDoesNotExist:
             return 404
 
-        tmp = []
-        for object in objectList:
-            tmp.append(object.get_as_dict())
-
-        self.setResult({"objects": tmp, "page": clean_id})
+        self.setResult(object.get_as_dict())
         return 200
 
     def post_process(self):

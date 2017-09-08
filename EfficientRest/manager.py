@@ -7,7 +7,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from EfficientRest.models import UserAuthKeys
 
 # Imports the endpoint folders
-api_endpoints = importlib.import_module(settings.REST_ENDPOINTS)
+api_endpoints = importlib.import_module(settings.EFFICIENTREST["ENDPOINTS_FOLDER"])
 
 
 class Manager:
@@ -52,6 +52,9 @@ class Manager:
     def setCode(self, code):
         self.Code = code
 
+    def getSafe(self):
+        return self.endpoint.getSafe()
+
     def addError(self, error):
         self.Errors.append(error)
 
@@ -83,6 +86,14 @@ class Manager:
                     return 401
 
                 if authkey.strip() != "":
+
+                    if "Bearer " not in authkey:
+                        self.addError("invalid_request")
+                        return 401
+                    else:
+                        authkey = authkey.replace("Bearer ", "")
+
+
                     # Try to get the auth key
                     try:
                         keymodel = UserAuthKeys.objects.get(key=authkey)

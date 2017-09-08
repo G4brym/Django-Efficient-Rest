@@ -12,7 +12,7 @@ def index_req(request):
 def api_req(request, endpoint, action=""):
     result = Manager(request, str(endpoint), str(action))
 
-    return JsonResponse(result.getResult(), status=result.getCode())
+    return JsonResponse(result.getResult(), status=result.getCode(), safe=result.getSafe())
 
         # Old method
         #dict = {
