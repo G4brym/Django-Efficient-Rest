@@ -7,6 +7,9 @@ from django import forms
 
 from EfficientRest.forms import modelField
 
+from rest_framework import status
+from rest_framework.settings import api_settings
+from rest_framework.renderers import JSONRenderer
 
 class EndpointType():
     methods = []
@@ -18,24 +21,21 @@ class EndpointType():
 
     input_data = None
 
-    Code = 500
+    Code = status.HTTP_500_INTERNAL_SERVER_ERROR
     Result = {}
     Errors = []
 
     useSafe = True
 
     def __init__(self, request, action):
-        self.Code = 500
+        self.Code = status.HTTP_500_INTERNAL_SERVER_ERROR
         self.Result = {}
         self.Errors = []
 
         self.request = request
         self.action = action
 
-        if self.request.method == "GET":
-            self.input_data = self.request.GET
-        else:
-            self.input_data = self.request.body
+        self.input_data = self.request.data
 
     def get_special_response(self):
         try:
@@ -90,6 +90,9 @@ class EndpointType():
     def addError(self, error):
         self.Errors.append(error)
 
+    def setErrors(self, errors):
+        self.Errors = errors
+
     def addErrorJson(self, error):
         self.Errors.append(json.loads(error))
 
@@ -98,7 +101,7 @@ class EndpointType():
 
     def process(self):
         # Must be overwriten
-        self.setCode(500)
+        self.setCode(status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -112,8 +115,8 @@ class Model(EndpointType):
                 try:
                     self.setCode(getattr(self, str(self.request.method.lower() + "_" + self.action))())
                 except AttributeError:
-                    self.addError("not found")
-                    self.setCode(404)
+                    self.addError("not_found")
+                    self.setCode(status.HTTP_404_NOT_FOUND)
         else:
             if self.action:
                 if settings.DEBUG:
@@ -122,8 +125,8 @@ class Model(EndpointType):
                     try:
                         self.setCode(getattr(self, str(self.request.method.lower() + "_process_single"))(self.action))
                     except AttributeError:
-                        self.addError("not found")
-                        self.setCode(404)
+                        self.addError("not_found")
+                        self.setCode(status.HTTP_404_NOT_FOUND)
             else:
                 if settings.DEBUG:
                     self.setCode(getattr(self, str(self.request.method.lower() + "_process"))())
@@ -131,8 +134,8 @@ class Model(EndpointType):
                     try:
                         self.setCode(getattr(self, str(self.request.method.lower() + "_process"))())
                     except AttributeError:
-                        self.addError("not found")
-                        self.setCode(404)
+                        self.addError("not_found")
+                        self.setCode(status.HTTP_404_NOT_FOUND)
 
 
 class Service(EndpointType):
@@ -145,14 +148,14 @@ class Service(EndpointType):
                 try:
                     self.setCode(getattr(self, str(self.request.method.lower() + "_" + self.action))())
                 except AttributeError:
-                    self.addError("not found")
-                    self.setCode(404)
+                    self.addError("not_found")
+                    self.setCode(status.HTTP_404_NOT_FOUND)
         else:
             try:
                 self.setCode(getattr(self, str(self.request.method.lower() + "_process"))())
             except AttributeError:
-                self.addError("not found")
-                self.setCode(404)
+                self.addError("not_found")
+                self.setCode(status.HTTP_404_NOT_FOUND)
 
 class BaseModel(Model):
     class Meta:
@@ -162,16 +165,10 @@ class BaseModel(Model):
         requires_auth = True
 
         Model = None
-        FormFields = {}
-        Form2Model = {}
-
-    Form = None
+        Serializer = None
 
     def __init__(self, request, action):
         Model.__init__(self, request, action)
-        self.Form = type('APIForm',  # form name is irrelevant
-                (forms.BaseForm,), # Dont remove the first comma in this line, really important
-                {'base_fields': self.Meta.FormFields})
 
     def get_process(self):
         #####
@@ -183,24 +180,22 @@ class BaseModel(Model):
             try:
                 clean_id = int(page)
             except:
-                return 400
+                return status.HTTP_400_BAD_REQUEST
 
-            skip = (clean_id - 1) * settings.EFFICIENTREST["OBJECTS_PER_REQUEST"]
-            get = skip + settings.EFFICIENTREST["OBJECTS_PER_REQUEST"]
+            skip = (clean_id - 1) * api_settings.PAGE_SIZE
+            get = skip + api_settings.PAGE_SIZE
 
             totalObjs = self.Meta.Model.objects.all().count()
 
             if skip > totalObjs or clean_id == 0:
-                return 406
+                return status.HTTP_406_NOT_ACCEPTABLE
 
             try:
                 objectList = self.Meta.Model.objects.all()[skip:get]
             except ObjectDoesNotExist:
-                return 404
+                return status.HTTP_404_NOT_FOUND
 
-            tmp = []
-            for object in objectList:
-                tmp.append(object.get_as_dict())
+            serializer = self.Meta.Serializer(objectList, many=True).data
 
             if totalObjs <= get:
                 next = False
@@ -213,43 +208,38 @@ class BaseModel(Model):
                 previous = True
 
 
-            self.setResult({"results": tmp, "meta":{"count": totalObjs, "next": next, "previous": previous}})
-            return 200
+            self.setResult({"results": serializer, "meta":{"count": totalObjs, "next": next, "previous": previous}})
+            return status.HTTP_200_OK
 
 
         # Process Coalescing
         ids = self.request.GET.getlist('ids[]', None)
         if ids != None:
             clean_ids = []
-            final_dict = []
 
             for id in ids:
                 try:
                     clean_ids.append(int(id))
                 except:
-                    return 400
+                    return status.HTTP_400_BAD_REQUEST
 
             objectList = self.Meta.Model.objects.filter(id__in=clean_ids)
 
-            for object in objectList:
-                final_dict.append(object.get_as_dict())
+            serializer = self.Meta.Serializer(objectList, many=True).data
 
-            self.setResult(final_dict)
-
-            # Disable Django safe mode, so it can actualy return a List
-            self.setSafe(False)
-            return 200
+            self.setResult(serializer)
+            return status.HTTP_200_OK
 
 
 
         objectList = self.Meta.Model.objects.all().count()
 
-        pages = math.ceil(objectList / settings.EFFICIENTREST["OBJECTS_PER_REQUEST"])
+        pages = math.ceil(objectList / api_settings.PAGE_SIZE)
         if pages > 0:
             pages = pages-1
 
         self.setResult({"pages": pages, "count": objectList})
-        return 200
+        return status.HTTP_200_OK
 
     def get_process_single(self, id):
         #####
@@ -259,53 +249,31 @@ class BaseModel(Model):
         try:
             clean_id = int(id)
         except:
-            return 400
+            return status.HTTP_400_BAD_REQUEST
 
         try:
             object = self.Meta.Model.objects.get(id=clean_id)
         except ObjectDoesNotExist:
-            return 404
+            return status.HTTP_404_NOT_FOUND
 
         self.setResult(object.get_as_dict())
-        return 200
+        return status.HTTP_200_OK
 
     def post_process(self):
         #####
         # Saves a new Object
         #####
 
-        form = self.Form(self.getInputJson())
+        serializer = self.Meta.Serializer(data=self.getInputPOST())
+        if serializer.is_valid():
+            serializer.save()
+            self.setResult(serializer.data)
+            return status.HTTP_201_CREATED
 
-        if form.is_valid():
-            try:
-                final = {}
-                for validation_var, model_var in self.Meta.Form2Model.items():
-                    if isinstance(model_var, modelField):
-                        tmp_var = form.cleaned_data[validation_var]
+        self.setErrors(serializer.errors)
+        return status.HTTP_400_BAD_REQUEST
 
-                        if(model_var.model.objects.filter(id=tmp_var).exists()):
-                            final[validation_var+"_id"] = tmp_var
-                        else:
-                            self.addError("Model Object not found")
-                            return 406
-
-                    else:
-                        final[model_var] = form.cleaned_data[validation_var]
-
-                object = self.Meta.Model.objects.create(**final)
-
-                self.setResult(object.get_as_dict())
-                return 200
-            # Error un key value dict
-            except KeyError:
-                return 500
-
-        else:
-            self.addErrorJson(form.errors.as_json())
-            print(form.errors.as_json())
-            return 400
-
-    def patch_process_single(self, id):
+    def put_process_single(self, id):
         #####
         # Updates an Object
         #####
@@ -313,26 +281,19 @@ class BaseModel(Model):
         try:
             clean_id = int(id)
         except:
-            return 400
+            return status.HTTP_400_BAD_REQUEST
 
-        form = self.Form(self.getInputJson())
+        try:
+            object = self.Meta.Model.objects.get(id=clean_id)
+        except:
+            return status.HTTP_404_NOT_FOUND
 
-        if form.is_valid():
+        serializer = self.Meta.Serializer(object, data=self.getInput(), partial=True)
 
-            try:
-                # TODO: optimize this one two, so FE can send only one var insted of the hole model
-                object = self.Meta.Model.objects.get(id=clean_id)
-            except ObjectDoesNotExist:
-                return 401
-
-            object.desc = form.cleaned_data["desc"]
-
-            return 200
-
-        else:
-            self.addErrorJson(form.errors.as_json())
-            print(form.errors.as_json())
-            return 400
+        if serializer.is_valid():
+            serializer.save()
+            self.setResult(serializer.data)
+            return status.HTTP_202_ACCEPTED
 
     def delete_process_single(self, id):
         #####
@@ -342,13 +303,13 @@ class BaseModel(Model):
         try:
             clean_id = int(id)
         except:
-            return 400
+            return status.HTTP_400_BAD_REQUEST
 
         try:
             object = self.Meta.Model.objects.get(id=clean_id)
         except ObjectDoesNotExist:
-            return 401
+            return status.HTTP_404_NOT_FOUND
 
         object.delete()
 
-        return 200
+        return status.HTTP_200_OK

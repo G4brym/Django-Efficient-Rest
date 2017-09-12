@@ -3,15 +3,17 @@ import json
 
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
+from django.contrib.auth.models import AnonymousUser
 
-from EfficientRest.models import UserAuthKeys
+from rest_framework import status
+
 
 # Imports the endpoint folders
 api_endpoints = importlib.import_module(settings.EFFICIENTREST["ENDPOINTS_FOLDER"])
 
 
 class Manager:
-    Code = 500
+    Code = status.HTTP_500_INTERNAL_SERVER_ERROR
     Result = {}
     Errors = []
     Callback = None
@@ -19,7 +21,7 @@ class Manager:
     endpoint = None
 
     def __init__(self, request, endpoint, action):
-        self.Code = 500
+        self.Code = status.HTTP_500_INTERNAL_SERVER_ERROR
         self.Result = {}
         self.Errors = []
 
@@ -37,14 +39,7 @@ class Manager:
             else:
                 return {"errors": errors}
 
-
-        if (self.endpoint.get_special_response()):
-
-            return self.endpoint.getResult()
-
-        else:
-
-            return self.endpoint.Result
+        return self.endpoint.Result
 
     def getCode(self):
         return self.Code
@@ -61,65 +56,32 @@ class Manager:
     def process(self, request, endpoint, action):
         # Respond to CORS requests, almost never enters this because of the middleware, but just in case
         if request.method == "OPTIONS":
-            return 200
+            return status.HTTP_200_OK
 
         # Checks if the endpoint is defined
         try:
             self.endpoint = getattr(api_endpoints, str('api_' + endpoint))(request, action)
         except ValueError:
             self.addError("not_found")
-            return 404
+            return status.HTTP_404_NOT_FOUND
         else:
             # Endpoint is defnined
 
             # Checks if the endpoint allow this HTTP method
             if request.method not in self.endpoint.getMethods():
                 self.addError("method_not_allowed")
-                return 405
+                return status.HTTP_405_METHOD_NOT_ALLOWED
 
             # Checks if the endpoint requires auth
-            if self.endpoint.requires_auth():
-                try:
-                    authkey = request.META['HTTP_AUTHORIZATION']
-                except:
-                    self.addError("invalid_request")
-                    return 401
-
-                if authkey.strip() != "":
-
-                    if "Bearer " not in authkey:
-                        self.addError("invalid_request")
-                        return 401
-                    else:
-                        authkey = authkey.replace("Bearer ", "")
-
-
-                    # Try to get the auth key
-                    try:
-                        keymodel = UserAuthKeys.objects.get(key=authkey)
-                    # TODO: add ip verification, against bruteforce
-                    except ObjectDoesNotExist:
-                        # Key dont exist
-                        self.addError("invalid_request")
-                        return 401
-
-                    # Check the key expire date
-                    if keymodel.valid():
-                        self.endpoint.setUser(keymodel.user)
-                    else:
-                        self.addError("invalid_grant")
-                        return 406
-
-                # User is not authenticated, key was not provided with the request
-                else:
-                    self.addError("invalid_request")
-                    return 401
+            if self.endpoint.requires_auth() and request.user == None:
+                self.addError("invalid_request")
+                return status.HTTP_401_UNAUTHORIZED
 
 
             # Check if the endpoint requires any action
             if self.endpoint.requires_action() and action == "":
                 self.addError("action_required")
-                return 400
+                return status.HTTP_400_BAD_REQUEST
 
             # Runs the endpoint logics
             self.endpoint.process()

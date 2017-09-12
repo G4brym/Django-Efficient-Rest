@@ -9,7 +9,7 @@ os.chdir(os.path.normpath(os.path.join(os.path.abspath(__file__), os.pardir)))
 
 setup(
     name='django-efficient-rest',
-    version='0.2.0',
+    version='0.3.0',
     packages=find_packages(),
     include_package_data=True,
     license='GPL-3.0',
@@ -18,6 +18,9 @@ setup(
     url='https://github.com/G4brym/Django-Efficient-Rest/',
     author='Gabriel Massadas',
     author_email='g4bryrm98@hotmail.com',
+    install_requires=[
+        'djangorestframework>=3.5.0',
+    ],
     classifiers=[
         'Environment :: Web Environment',
         'Framework :: Django',
