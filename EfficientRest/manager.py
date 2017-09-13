@@ -76,6 +76,8 @@ class Manager:
             if self.endpoint.requires_auth() and request.user == None:
                 self.addError("invalid_request")
                 return status.HTTP_401_UNAUTHORIZED
+            else:
+                self.endpoint.setUser(request.user)
 
 
             # Check if the endpoint requires any action
